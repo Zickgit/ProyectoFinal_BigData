@@ -134,8 +134,8 @@ def main():
                                    textColor=AZUL)),
           Spacer(1, 1.6 * cm),
           Paragraph("<b>Integrantes del equipo:</b>", CEN),
-          Paragraph("[Nombre del estudiante 1] — Matrícula: [__________]", CEN),
-          Paragraph("[Nombre del estudiante 2] — Matrícula: [__________]", CEN),
+          Paragraph("Diego Pineda Gumeta — Matrícula: 100002851", CEN),
+          Paragraph("Ever Daniel Gómez Domínguez — Matrícula: ______________", CEN),
           Spacer(1, 0.8 * cm),
           Paragraph("<b>Docente:</b> Dr. Christian Mauricio Castillo Estrada", CEN),
           Paragraph("<b>Periodo:</b> Agosto – Diciembre 2026", CEN),
@@ -359,7 +359,7 @@ def main():
 
     doc = SimpleDocTemplate(str(SALIDA), pagesize=letter, leftMargin=2 * cm, rightMargin=2 * cm,
                             topMargin=1.8 * cm, bottomMargin=1.8 * cm,
-                            title="Proyecto Final Big Data - Infocaña", author="Equipo Big Data UNACH")
+                            title="Proyecto Final Big Data - Infocaña", author="Diego Pineda Gumeta, Ever Daniel Gómez Domínguez")
     doc.build(h, onFirstPage=lambda c, d: None, onLaterPages=pie_pagina)
     print(f"Informe generado: {SALIDA}")
 
