@@ -19,6 +19,20 @@ from reportlab.lib.units import cm
 from reportlab.platypus import (Image, KeepTogether, PageBreak, Paragraph, Preformatted,
                                 SimpleDocTemplate, Spacer, Table, TableStyle)
 
+import matplotlib
+from reportlab.lib.fonts import addMapping
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+# Fuentes DejaVu (incluidas en matplotlib): soportan β, Ŷ, ², →, etc.
+_TTF = Path(matplotlib.get_data_path()) / "fonts" / "ttf"
+for _nombre, _archivo in [("DV", "DejaVuSans.ttf"), ("DV-B", "DejaVuSans-Bold.ttf"),
+                          ("DV-I", "DejaVuSans-Oblique.ttf"), ("DV-BI", "DejaVuSans-BoldOblique.ttf"),
+                          ("DVMono", "DejaVuSansMono.ttf")]:
+    pdfmetrics.registerFont(TTFont(_nombre, str(_TTF / _archivo)))
+addMapping("DV", 0, 0, "DV"); addMapping("DV", 1, 0, "DV-B")
+addMapping("DV", 0, 1, "DV-I"); addMapping("DV", 1, 1, "DV-BI")
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 import modelo as M  # noqa: E402
@@ -30,12 +44,12 @@ SALIDA = Path(__file__).parent / "Informe_ProyectoFinal_BigData.pdf"
 AZUL = colors.HexColor("#14284b")
 
 st = getSampleStyleSheet()
-H1 = ParagraphStyle("H1", parent=st["Heading1"], textColor=AZUL, fontSize=16, spaceAfter=8)
-H2 = ParagraphStyle("H2", parent=st["Heading2"], textColor=AZUL, fontSize=12.5, spaceBefore=8, spaceAfter=4)
-P = ParagraphStyle("P", parent=st["BodyText"], fontSize=10.5, leading=15, alignment=TA_JUSTIFY, spaceAfter=6)
+H1 = ParagraphStyle("H1", parent=st["Heading1"], textColor=AZUL, fontSize=16, spaceAfter=8, fontName="DV-B")
+H2 = ParagraphStyle("H2", parent=st["Heading2"], textColor=AZUL, fontSize=12.5, spaceBefore=8, spaceAfter=4, fontName="DV-B")
+P = ParagraphStyle("P", parent=st["BodyText"], fontName="DV", fontSize=10, leading=15, alignment=TA_JUSTIFY, spaceAfter=6)
 LI = ParagraphStyle("LI", parent=P, leftIndent=14, bulletIndent=4, spaceAfter=2)
 PIE = ParagraphStyle("PIE", parent=P, fontSize=8.5, textColor=colors.HexColor("#52514e"), alignment=TA_CENTER)
-CODE = ParagraphStyle("CODE", fontName="Courier", fontSize=6.6, leading=8.1, backColor=colors.HexColor("#f5f6f8"),
+CODE = ParagraphStyle("CODE", fontName="DVMono", fontSize=6.3, leading=8.1, backColor=colors.HexColor("#f5f6f8"),
                       borderPadding=4, leftIndent=2)
 CEN = ParagraphStyle("CEN", parent=P, alignment=TA_CENTER)
 
@@ -50,13 +64,13 @@ def bullets(items):
 
 def tabla(filas, anchos, cab=True):
     t = Table(filas, colWidths=anchos, repeatRows=1 if cab else 0)
-    estilo = [("FONT", (0, 0), (-1, -1), "Helvetica", 9),
+    estilo = [("FONT", (0, 0), (-1, -1), "DV", 8.5),
               ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#c9c7c1")),
               ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
               ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f3f6fb")])]
     if cab:
         estilo += [("BACKGROUND", (0, 0), (-1, 0), AZUL), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                   ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 9)]
+                   ("FONT", (0, 0), (-1, 0), "DV-B", 8.5)]
     t.setStyle(TableStyle(estilo))
     return t
 
@@ -78,7 +92,7 @@ def codigo(ruta: Path, titulo: str):
 
 def pie_pagina(canvas, doc):
     canvas.saveState()
-    canvas.setFont("Helvetica", 8)
+    canvas.setFont("DV", 8)
     canvas.setFillColor(colors.HexColor("#52514e"))
     canvas.drawString(2 * cm, 1.2 * cm, "UNACH · Ingeniería en Desarrollo y Tecnologías de Software · Big Data")
     canvas.drawRightString(letter[0] - 2 * cm, 1.2 * cm, f"Página {doc.page}")
@@ -106,7 +120,7 @@ def main():
     # ---- Portada -------------------------------------------------------------
     h += [Spacer(1, 1.2 * cm),
           Paragraph("UNIVERSIDAD AUTÓNOMA DE CHIAPAS", ParagraphStyle("u", parent=CEN, fontSize=15, leading=20,
-                                                                    textColor=AZUL, fontName="Helvetica-Bold")),
+                                                                    textColor=AZUL, fontName="DV-B")),
           Paragraph("Escuela de Tecnologías Digitales Aplicadas, Campus IV", CEN),
           Paragraph("Ingeniería en Desarrollo y Tecnologías de Software", CEN),
           Spacer(1, 1.6 * cm),
@@ -116,7 +130,7 @@ def main():
           Spacer(1, 1.2 * cm),
           Paragraph("“Análisis predictivo de la producción de azúcar en México mediante regresión lineal y "
                     "procesamiento ETL con datos abiertos de Infocaña”",
-                    ParagraphStyle("t", parent=CEN, fontSize=17, leading=24, fontName="Helvetica-Bold",
+                    ParagraphStyle("t", parent=CEN, fontSize=17, leading=24, fontName="DV-B",
                                    textColor=AZUL)),
           Spacer(1, 1.6 * cm),
           Paragraph("<b>Integrantes del equipo:</b>", CEN),
@@ -168,7 +182,7 @@ def main():
         "campo (caña bruta / superficie), azúcar por hectárea, y rendimiento promedio por ingenio.",
         "<b>Agregación por zafra:</b> como los datos son acumulados semanales, se toma la última semana "
         "reportada por cada ingenio (cierre) y se suma a nivel nacional. Se marca como <i>en curso</i> la "
-        "zafra cuyo número de semanas es menor al 85 % de la mediana histórica.",
+        "zafra más reciente si su número de semanas es menor al 85 % de la mediana histórica.",
         f"<b>Load:</b> almacenamiento en DataFrames de pandas, archivos CSV y base de datos SQLite "
         f"(<i>data/processed/infocana.db</i>) con 5 tablas. Resultado: {f(n_sem)} registros semanales limpios "
         f"de {n_ing} ingenios.",
@@ -262,6 +276,18 @@ def main():
                  ["MAE prueba (t)", f(r.mae)], ["RMSE prueba (t)", f(r.rmse)], ["MAPE prueba", f"{f(r.mape, 2)} %"]],
                 [6 * cm, 10.5 * cm]),
           Spacer(1, 6),
+          Paragraph(f"<b>Lectura de las métricas.</b> El modelo de evaluación se entrenó con las zafras "
+                    f"{comp.etiqueta.iloc[0]} a {comp.etiqueta.iloc[r.n_train - 1]} y se probó con "
+                    f"{', '.join(comp.etiqueta.iloc[r.n_train:])}. Su error medio en prueba fue de {f(r.mae)} t "
+                    f"(MAPE {f(r.mape, 2)} %): la recta de entrenamiento no anticipó la caída de producción "
+                    "de las dos últimas zafras completas, que coincidió con la sequía de 2023 en las regiones "
+                    "cañeras. El R² de prueba resulta negativo porque el conjunto de prueba sólo tiene "
+                    f"{r.n_test} zafras con valores muy parecidos entre sí; con tan poca varianza, el R² se dispara "
+                    "con cualquier error y no es una medida útil. Por eso se usan el MAE y el MAPE como métricas "
+                    "principales. El R² de entrenamiento bajo indica que la variación de un año a otro es grande "
+                    "comparada con la tendencia, así que el pronóstico debe leerse junto con su intervalo de "
+                    "predicción.", P),
+          Spacer(1, 4),
           Paragraph("Regresión azúcar producida total vs. caña molida neta", H2),
           Paragraph(f"Ŷ = {f(xy.b0, 2)} + {xy.b1:.5f}·X. Con {len(xy.datos)} observaciones (ingenio-zafra), "
                     f"el modelo obtuvo R² = {xy.r2_train:.4f} en entrenamiento y R² = {xy.r2_test:.4f} en prueba "

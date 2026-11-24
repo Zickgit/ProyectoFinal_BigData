@@ -237,25 +237,58 @@ def limpiar_texto(valor):
     return re.sub(r"\s+", " ", valor).strip()
 
 
+# Ingenios que cambiaron de nombre entre zafras -> clave del nombre vigente.
+ALIAS_INGENIOS = {
+    "azsuremex - tenosique": "azsuremex",
+    "cuatotolapam": "ciasa (cuatotolapam)",
+    "el potrero": "central el potrero",
+    "jose ma. martinez (tala)": "tala",
+    "jose ma. morelos": "jose maria morelos",
+    # Nota: en 2015-2016 "la providencia" (sem. 9-13) y "la providencia, central"
+    # (sem. 14-34) son dos series acumuladas independientes (el acumulado se
+    # reinicia), por eso "la providencia" NO se fusiona: se suman ambas.
+    "la providencia, central": "central la providencia",
+    "pablo machado (la margarita)": "la margarita",
+    "pujiltic (cia. la fe)": "cia. la fe (pujiltic)",
+    "san cristobal zcmx": "san cristobal",
+    "san miguelito": "central san miguelito",
+    "tamazula-saenz": "tamazula",
+    "presidente benito juarez-santos": "presidente benito juarez",
+}
+
+
 def clave_ingenio(nombre: str) -> str:
     """'Lázaro Cárdenas - Siembra' y 'lazaro cardenas' -> 'lazaro cardenas'."""
     s = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode().lower()
     s = re.sub(r"\s*-\s*siembra$", "", s)
-    return re.sub(r"\s+", " ", s).strip()
+    s = re.sub(r"\s+", " ", s).strip()
+    return ALIAS_INGENIOS.get(s, s)
 
 
 def nombres_canonicos(ingenios: pd.Series) -> dict[str, str]:
-    """Nombre a mostrar por ingenio: se prefiere la grafía con acentos (archivos
-    recientes); si sólo existe en minúsculas se usa formato de título."""
-    canon: dict[str, str] = {}
-    for nombre in ingenios.dropna().unique():
+    """Nombre a mostrar por ingenio: se prefiere la grafía con acentos (archivo
+    más reciente); si sólo existe en minúsculas se usa el nombre más reciente
+    que coincide con la clave, en formato de título."""
+    acentuados: dict[str, str] = {}
+    minusculas: dict[str, str] = {}
+    for nombre in ingenios.dropna().unique():  # orden cronológico de las zafras
         k = clave_ingenio(nombre)
         limpio = re.sub(r"\s*-\s*[Ss]iembra$", "", nombre).strip()
         if nombre != nombre.lower():
-            canon[k] = limpio
+            acentuados[k] = limpio
+        elif clave_ingenio(limpio) == k and re.sub(r"\s+", " ", limpio.lower()) == k:
+            minusculas[k] = limpio
         else:
-            canon.setdefault(k, limpio.title().replace("De ", "de ").replace("Del ", "del ")
-                             .replace("Cia.", "Cía."))
+            minusculas.setdefault(k, k)
+    canon = {}
+    for k in set(acentuados) | set(minusculas):
+        if k in acentuados:
+            canon[k] = acentuados[k]
+        else:
+            t = minusculas[k].title()
+            for a, b in ((" De ", " de "), (" Del ", " del "), ("Cia.", "Cía.")):
+                t = t.replace(a, b)
+            canon[k] = t
     return canon
 
 
@@ -296,7 +329,10 @@ def transform(marcos: list[pd.DataFrame]) -> dict[str, pd.DataFrame]:
     datos[VARIABLES_ACUMULADAS] = datos[VARIABLES_ACUMULADAS].fillna(0)
     # Valores negativos no tienen sentido físico
     datos = datos[(datos[VARIABLES_ACUMULADAS] >= 0).all(axis=1)]
-    datos = datos.drop_duplicates(subset=["ingenio", "zafra", "no_s_zafra"], keep="last")
+    dup = datos.duplicated(subset=["ingenio", "zafra", "no_s_zafra"], keep="last")
+    if dup.any():
+        print(f"  Duplicados (ingenio, zafra, semana) eliminados: {int(dup.sum())}")
+    datos = datos[~dup]
     datos["no_s_zafra"] = datos["no_s_zafra"].astype(int)
     print(f"  Registros eliminados por nulos/duplicados/negativos: {n0 - len(datos):,}")
 
@@ -374,15 +410,17 @@ def _ratio(a: pd.Series, b: pd.Series) -> pd.Series:
 
 
 def _marcar_completas(por_zafra: pd.DataFrame) -> pd.Series:
-    """Una zafra se considera completa si su número de semanas es >= 85 % de la
-    mediana del resto; la zafra más reciente suele estar en curso."""
-    semanas = por_zafra["semanas"]
-    completas = []
-    for i, s in enumerate(semanas):
-        otras = semanas.drop(index=i)
-        referencia = otras.median() if len(otras) else 30
-        completas.append(bool(s >= 0.85 * max(referencia, 20)))
-    return pd.Series(completas, index=por_zafra.index)
+    """Las zafras históricas están cerradas. Sólo la más reciente puede estar en
+    curso: se considera incompleta si su número de semanas es menor al 85 % de la
+    mediana de semanas de las zafras anteriores."""
+    completas = pd.Series(True, index=por_zafra.index)
+    if len(por_zafra) > 1:
+        ultima = por_zafra.index[-1]
+        referencia = por_zafra["semanas"].iloc[:-1].median()
+        completas[ultima] = bool(por_zafra.loc[ultima, "semanas"] >= 0.85 * referencia)
+    else:
+        completas.iloc[0] = bool(por_zafra["semanas"].iloc[0] >= 30)
+    return completas
 
 
 def _nacional_semanal(semanal: pd.DataFrame) -> pd.DataFrame:

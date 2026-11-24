@@ -104,7 +104,7 @@ tab_pronostico = ui.nav_panel(
                      showcase=ICONO_DB, theme="primary"),
         ui.value_box("Pronóstico final", ui.output_text("vb_pronostico"), ui.output_text("vb_pron_sub"),
                      showcase=ICONO_TEND, theme="success"),
-        ui.value_box("R² (prueba)", ui.output_text("vb_r2"), ui.output_text("vb_r2_sub"),
+        ui.value_box("Error en prueba (MAPE)", ui.output_text("vb_r2"), ui.output_text("vb_r2_sub"),
                      showcase=ICONO_DIANA, theme="light"),
         fill=False,
     ),
@@ -286,12 +286,12 @@ def server(input, output, session):
     @render.text
     def vb_r2():
         c = calculo()
-        return "—" if "error" in c else fmt(c["res"].r2_test, 3)
+        return "—" if "error" in c else f"{fmt(c['res'].mape, 2)} %"
 
     @render.text
     def vb_r2_sub():
         c = calculo()
-        return "" if "error" in c else f"MAPE prueba: {fmt(c['res'].mape, 2)} %"
+        return "" if "error" in c else f"MAE: {fmt(c['res'].mae)} · {c['res'].n_test} periodos de prueba"
 
     @render.ui
     def estado_modelo():
@@ -310,7 +310,7 @@ def server(input, output, session):
     @render.plot(alt="Serie histórica, ajuste de regresión lineal y pronóstico")
     def grafica_serie():
         c = calculo()
-        fig, ax = plt.subplots(figsize=(11, 4.4))
+        fig, ax = plt.subplots(figsize=(11, 4.4), layout="tight")
         fig.patch.set_facecolor("white")
         estilo_ejes(ax)
         if "error" in c:
@@ -339,8 +339,10 @@ def server(input, output, session):
         ax.fill_between(p["x"], p["li"], p["ls"], color=AQUA, alpha=0.15, lw=0, label="Intervalo de predicción 95 %")
         ax.plot([x_last, *p["x"]], [y_last, *p["y"]], "-o", color=AQUA, lw=2, ms=6, label="Pronóstico", zorder=3)
         ax.axvline(x_last, color=GRIS, ls=":", lw=1.2)
-        ax.annotate(f"Último dato: {fmt_corto(y_last)}", (x_last, y_last), xytext=(-12, 22),
-                    textcoords="offset points", ha="right", fontsize=9, color=TINTA,
+        # Etiqueta del último dato del lado libre de la curva (arriba si la serie sube)
+        dy = 34 if r.b1 > 0 else -40
+        ax.annotate(f"Último dato: {fmt_corto(y_last)}", (x_last, y_last), xytext=(-14, dy),
+                    textcoords="offset points", ha="right", va="center", fontsize=9, color=TINTA,
                     bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=AZUL, lw=1),
                     arrowprops=dict(arrowstyle="-", color=AZUL, lw=1))
         pf = p.iloc[-1]
@@ -362,7 +364,6 @@ def server(input, output, session):
         ax.set_title(f"{M.VARIABLES[c['variable']]} · {c['ingenio']}", loc="left", fontsize=11, color=TINTA)
         ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.30), ncol=3, frameon=False, fontsize=9,
                   labelcolor=TINTA2)
-        fig.tight_layout()
         return fig
 
     def _paso(s):
@@ -387,6 +388,9 @@ def server(input, output, session):
         return ui.div(
             ui.tags.table(*[ui.tags.tr(ui.tags.td(a), ui.tags.td(ui.tags.b(b))) for a, b in filas], class_="metrica"),
             ui.p(f"Modelo recalibrado con todos los periodos: {r.ecuacion}", class_="nota mt-2"),
+            ui.p("Con pocos periodos de prueba y valores parecidos entre sí, el R² de prueba puede ser muy "
+                 "negativo aunque el error sea moderado; por eso se reportan MAE y MAPE como métricas principales.",
+                 class_="nota"),
         )
 
     @render.data_frame
@@ -434,7 +438,7 @@ def server(input, output, session):
     def grafica_xy():
         r = calculo_xy()
         x, y = r.datos[input.xvar()], r.datos["azucar_producida_total"]
-        fig, ax = plt.subplots(figsize=(8, 4.6))
+        fig, ax = plt.subplots(figsize=(8, 4.6), layout="tight")
         estilo_ejes(ax)
         ax.xaxis.set_major_formatter(FuncFormatter(fmt_corto))
         ax.scatter(x[~r.es_test], y[~r.es_test], s=34, color=AZUL, alpha=0.75, edgecolor="white", lw=0.8,
@@ -448,14 +452,13 @@ def server(input, output, session):
         ax.set_xlabel(etiquetas[input.xvar()], color=TINTA2)
         ax.set_ylabel("Azúcar producida total (t)", color=TINTA2)
         ax.legend(frameon=False, fontsize=9, labelcolor=TINTA2)
-        fig.tight_layout()
         return fig
 
     # ---- Indicadores ----------------------------------------------------
     @render.plot(alt="Top 15 ingenios por producción promedio de azúcar")
     def grafica_ingenios():
         d = DATOS["infocana_rend_ingenio"].nlargest(15, "azucar_promedio").iloc[::-1]
-        fig, ax = plt.subplots(figsize=(7, 4.6))
+        fig, ax = plt.subplots(figsize=(7, 4.6), layout="tight")
         estilo_ejes(ax)
         ax.grid(axis="y", visible=False)
         ax.xaxis.set_major_formatter(FuncFormatter(fmt_corto))
@@ -464,16 +467,15 @@ def server(input, output, session):
         ax.set_yticks(pos, [str(n) for n in d["ingenio"]])
         for yv, (v, rf) in enumerate(zip(d["azucar_promedio"], d["rend_fabrica_promedio"])):
             ax.text(v, yv, f"  {fmt_corto(v)} t · rend. {rf:.1f} %", va="center", fontsize=8, color=TINTA2)
-        ax.set_xlim(0, d["azucar_promedio"].max() * 1.35)
+        ax.set_xlim(0, d["azucar_promedio"].max() * 1.55)
         ax.tick_params(axis="y", labelsize=8)
         ax.set_xlabel("Azúcar promedio por zafra (t)", color=TINTA2)
-        fig.tight_layout()
         return fig
 
     @render.plot(alt="Producción nacional de azúcar por zafra")
     def grafica_barras_zafra():
         d = DATOS["infocana_zafra"]
-        fig, ax = plt.subplots(figsize=(7, 4.6))
+        fig, ax = plt.subplots(figsize=(7, 4.6), layout="tight")
         estilo_ejes(ax)
         ax.grid(axis="x", visible=False)
         completa = d["completa"].astype(str).str.lower().isin(["true", "1"])
@@ -487,7 +489,6 @@ def server(input, output, session):
         ax.set_ylim(0, d["azucar_producida_total"].max() * 1.15)
         plt.setp(ax.get_xticklabels(), rotation=40, ha="right")
         ax.set_title("Azúcar producida total (t) · gris = zafra en curso", loc="left", fontsize=10, color=TINTA2)
-        fig.tight_layout()
         return fig
 
     # ---- Interpretación ---------------------------------------------------
