@@ -360,7 +360,7 @@ def server(input, output, session):
             ax.set_xlabel("Semana de zafra", color=TINTA2)
         ax.set_ylabel(M.VARIABLES[c["variable"]], color=TINTA2)
         ax.set_title(f"{M.VARIABLES[c['variable']]} · {c['ingenio']}", loc="left", fontsize=11, color=TINTA)
-        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.22), ncol=3, frameon=False, fontsize=9,
+        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.30), ncol=3, frameon=False, fontsize=9,
                   labelcolor=TINTA2)
         fig.tight_layout()
         return fig
@@ -459,7 +459,9 @@ def server(input, output, session):
         estilo_ejes(ax)
         ax.grid(axis="y", visible=False)
         ax.xaxis.set_major_formatter(FuncFormatter(fmt_corto))
-        ax.barh(d["ingenio"], d["azucar_promedio"], color=AZUL, height=0.7)
+        pos = np.arange(len(d))
+        ax.barh(pos, d["azucar_promedio"].to_numpy(float), color=AZUL, height=0.7)
+        ax.set_yticks(pos, [str(n) for n in d["ingenio"]])
         for yv, (v, rf) in enumerate(zip(d["azucar_promedio"], d["rend_fabrica_promedio"])):
             ax.text(v, yv, f"  {fmt_corto(v)} t · rend. {rf:.1f} %", va="center", fontsize=8, color=TINTA2)
         ax.set_xlim(0, d["azucar_promedio"].max() * 1.35)
@@ -476,13 +478,15 @@ def server(input, output, session):
         ax.grid(axis="x", visible=False)
         completa = d["completa"].astype(str).str.lower().isin(["true", "1"])
         colores = [AZUL if cp else "#c9c7c1" for cp in completa]
-        ax.bar(d["zafra"], d["azucar_producida_total"], color=colores, width=0.7)
+        pos = np.arange(len(d))
+        ax.bar(pos, d["azucar_producida_total"].to_numpy(float), color=colores, width=0.7)
+        ax.set_xticks(pos, [str(zf) for zf in d["zafra"]])
         for i, (v, cp) in enumerate(zip(d["azucar_producida_total"], completa)):
             ax.text(i, v, fmt_corto(v) + ("" if cp else "\n(en curso)"), ha="center", va="bottom",
                     fontsize=8, color=TINTA2)
         ax.set_ylim(0, d["azucar_producida_total"].max() * 1.15)
         plt.setp(ax.get_xticklabels(), rotation=40, ha="right")
-        ax.set_ylabel("Azúcar producida total (t)", color=TINTA2)
+        ax.set_title("Azúcar producida total (t) · gris = zafra en curso", loc="left", fontsize=10, color=TINTA2)
         fig.tight_layout()
         return fig
 

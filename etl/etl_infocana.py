@@ -112,6 +112,16 @@ SINONIMOS = {
     "cania_molida_neta": "cana_molida_neta",
     "toneladas_azucar_con_pol_menor_99_20": "toneladas_azucar_con_pol_menor_99_2",
     "eficiencia_fabrica": "eficiencia_en_fabrica",
+    # Esquema de las zafras 2014-2015 a 2024-2025
+    "semana": "no_s_zafra",
+    "azucar_total": "azucar_producida_total",
+    "azucar_refinada": "azucar_producida_refinada",
+    "azucar_estandar": "azucar_producida_estandar",
+    "azucar_blanca_especial": "azucar_producida_blanca_especial",
+    "azucar_mascabado": "azucar_producida_mascabado",
+    "azucar_pol_menor_99_2": "toneladas_azucar_con_pol_menor_99_2",
+    "karbe_cana_bruta": "karbe_ton_cana_bruta_teorico",
+    "karbe_cana_neta": "karbe_ton_cana_neta_teorico",
 }
 
 
@@ -227,6 +237,28 @@ def limpiar_texto(valor):
     return re.sub(r"\s+", " ", valor).strip()
 
 
+def clave_ingenio(nombre: str) -> str:
+    """'Lázaro Cárdenas - Siembra' y 'lazaro cardenas' -> 'lazaro cardenas'."""
+    s = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode().lower()
+    s = re.sub(r"\s*-\s*siembra$", "", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def nombres_canonicos(ingenios: pd.Series) -> dict[str, str]:
+    """Nombre a mostrar por ingenio: se prefiere la grafía con acentos (archivos
+    recientes); si sólo existe en minúsculas se usa formato de título."""
+    canon: dict[str, str] = {}
+    for nombre in ingenios.dropna().unique():
+        k = clave_ingenio(nombre)
+        limpio = re.sub(r"\s*-\s*[Ss]iembra$", "", nombre).strip()
+        if nombre != nombre.lower():
+            canon[k] = limpio
+        else:
+            canon.setdefault(k, limpio.title().replace("De ", "de ").replace("Del ", "del ")
+                             .replace("Cia.", "Cía."))
+    return canon
+
+
 def transform(marcos: list[pd.DataFrame]) -> dict[str, pd.DataFrame]:
     print("TRANSFORM")
     normalizados = []
@@ -240,6 +272,8 @@ def transform(marcos: list[pd.DataFrame]) -> dict[str, pd.DataFrame]:
 
     # Tipos de datos ------------------------------------------------------
     datos["ingenio"] = datos["ingenio"].map(limpiar_texto)
+    canon = nombres_canonicos(datos["ingenio"])
+    datos["ingenio"] = datos["ingenio"].map(lambda n: canon.get(clave_ingenio(n), n) if isinstance(n, str) else n)
     if "zafra" not in datos:
         datos["zafra"] = None
     datos["zafra"] = [
@@ -257,8 +291,9 @@ def transform(marcos: list[pd.DataFrame]) -> dict[str, pd.DataFrame]:
     clave = ["ingenio", "zafra", "no_s_zafra", "azucar_producida_total"]
     datos = datos.dropna(subset=clave)
     datos = datos[datos["ingenio"].str.len() > 0]
-    # Columnas operativas: un nulo significa "sin reporte" -> 0
-    datos[COLUMNAS_NUMERICAS] = datos[COLUMNAS_NUMERICAS].fillna(0)
+    # Volúmenes acumulados: un nulo significa "sin reporte" -> 0. Los indicadores
+    # (eficiencias, rendimientos) se dejan nulos cuando la zafra no los publica.
+    datos[VARIABLES_ACUMULADAS] = datos[VARIABLES_ACUMULADAS].fillna(0)
     # Valores negativos no tienen sentido físico
     datos = datos[(datos[VARIABLES_ACUMULADAS] >= 0).all(axis=1)]
     datos = datos.drop_duplicates(subset=["ingenio", "zafra", "no_s_zafra"], keep="last")
@@ -317,7 +352,7 @@ def transform(marcos: list[pd.DataFrame]) -> dict[str, pd.DataFrame]:
             cana_neta_promedio=("cana_molida_neta", "mean"),
             rend_fabrica_promedio=("rend_fabrica_calc", "mean"),
             rend_campo_promedio=("rend_campo_calc", "mean"),
-            rend_agroindustrial_promedio=("rendimiento_agroindustrial", "mean"),
+            azucar_por_ha_promedio=("azucar_por_ha", "mean"),
         )
         .sort_values("azucar_promedio", ascending=False)
         .reset_index(drop=True)
